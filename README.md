@@ -28,7 +28,7 @@ You will see a consent screen listing the two commands and their capabilities.
 
 ```bash
 mm allowances audit --chain-id 1
-mm allowances audit --chain-id 8453 --lookback 500000 --json
+mm allowances audit --chain-id 8453 --lookback-days 90 --json
 mm allowances audit --chain-id 1 --spender 0x000000000022D473030F116dDEE9F6B43aC78BA3   # only Permit2
 
 mm allowances revoke --chain-id 1 --token 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 --spender 0x000000000022D473030F116dDEE9F6B43aC78BA3 --dry-run
@@ -53,8 +53,7 @@ Sepolia, where the base fee moves faster than the estimate).
     { "token": "0x…", "symbol": "USDC", "decimals": 6, "spender": "0x…", "spenderLabel": "Uniswap Permit2",
       "allowance": "1157920892373161954235709850086879078532699846656405640394575840079131296399…",
       "allowanceFormatted": "unlimited", "unlimited": true, "lastApprovalBlock": "…", "lastApprovalTx": "0x…" }
-  ],
-  "hint": "Revoke one with: mm allowances revoke --chain-id <id> --token <token> --spender <spender>"
+  ]
 }
 ```
 
@@ -66,9 +65,11 @@ MetaMask's Guard Mode policy and 2FA, so the agent cannot skip your confirmation
 
 ## Notes and limits
 
-- The scan is event-based: approvals older than `--lookback` blocks (default 250 000) are not found. Widen the
-  window or pass `--from-block` for a full history. Each `eth_getLogs` call covers `--chunk` blocks (default 5000);
-  lower it if your RPC rejects the range.
+- The scan is event-based and windowed: by default it covers the last **30 days**, converted into blocks with the
+  chain's block time (≈ 216 000 blocks on Ethereum, ≈ 1.3 M on Base, ≈ 10 M on Arbitrum). Widen with
+  `--lookback-days`, pin an exact window with `--lookback <blocks>` or `--from-block`. Each `eth_getLogs` call covers
+  `--chunk` blocks (default 10 000); lower it if your RPC rejects the range. Long windows on fast chains mean many
+  calls: on Arbitrum, 30 days is about a thousand requests. In `--json` mode progress is only shown with `--verbose`.
 - Only standard ERC-20 `Approval` events are considered (no Permit2 internal allowances, no ERC-721/1155
   `setApprovalForAll`). Those are natural follow-ups.
 - Spender labels are informational and may be incomplete.

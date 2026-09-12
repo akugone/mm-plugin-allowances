@@ -42,10 +42,17 @@ const inputs = {
     required: false,
     prompt: false,
   },
+  lookbackDays: {
+    type: InputFieldType.Text,
+    flag: "lookback-days",
+    message: "How many days back to scan for Approval events, converted with the chain's block time (default 30)",
+    required: false,
+    prompt: false,
+  },
   lookback: {
     type: InputFieldType.Text,
     flag: "lookback",
-    message: "How many blocks back to scan for Approval events (default 250000)",
+    message: "How many blocks back to scan (overrides --lookback-days)",
     required: false,
     prompt: false,
   },
@@ -59,7 +66,7 @@ const inputs = {
   chunk: {
     type: InputFieldType.Text,
     flag: "chunk",
-    message: "Blocks per eth_getLogs call (default 5000; lower it if your RPC rejects the range)",
+    message: "Blocks per eth_getLogs call (default 10000; lower it if your RPC rejects the range)",
     required: false,
     prompt: false,
   },
@@ -92,10 +99,35 @@ export type AuditResult = {
   scanned: { fromBlock: string; toBlock: string; approvalEvents: number; pairs: number };
   totals: { active: number; unlimited: number };
   allowances: AllowanceEntry[];
-  hint: string;
 };
 
 type Pair = { token: Address; spender: Address; lastBlock: bigint; lastTx?: string };
+
+/** Approximate seconds per block, used to turn --lookback-days into a block window. Unknown chains assume 12 s. */
+const BLOCK_SECONDS: Record<number, number> = {
+  1: 12, 11155111: 12,            // Ethereum, Sepolia
+  8453: 2, 84532: 2,              // Base, Base Sepolia
+  10: 2, 59144: 2, 43114: 2,      // Optimism, Linea, Avalanche
+  137: 2, 80002: 2,               // Polygon, Amoy
+  56: 1.5,                        // BNB Chain
+  42161: 0.25, 421614: 0.25,      // Arbitrum One, Arbitrum Sepolia
+  324: 1,                         // zkSync Era
+};
+
+export function blocksForDays(chainId: number, days: number): bigint {
+  const perBlock = BLOCK_SECONDS[chainId] ?? 12;
+  return BigInt(Math.ceil((days * 86_400) / perBlock));
+}
+
+function parseDays(raw: string | undefined): number {
+  const value = (raw ?? "").trim();
+  if (!value) return 30;
+  const days = Number(value);
+  if (!Number.isFinite(days) || days <= 0 || days > 3650) {
+    throw new CommandError("INVALID_INPUT", "lookback-days must be a positive number of days (max 3650).", `Got '${value}'.`);
+  }
+  return days;
+}
 
 export default class AllowancesAudit extends PluginCommand<AuditResult> {
   static override description =
@@ -103,7 +135,7 @@ export default class AllowancesAudit extends PluginCommand<AuditResult> {
 
   static override examples = [
     "<%= config.bin %> allowances audit --chain-id 1",
-    "<%= config.bin %> allowances audit --chain-id 8453 --lookback 500000 --json",
+    "<%= config.bin %> allowances audit --chain-id 8453 --lookback-days 90 --json",
     "<%= config.bin %> allowances audit --chain-id 1 --spender 0x000000000022D473030F116dDEE9F6B43aC78BA3",
   ];
 
@@ -119,8 +151,8 @@ export default class AllowancesAudit extends PluginCommand<AuditResult> {
     const chainId = parseChainId(r.chainId);
     const owner = resolveOwner(this.ctx, r.address);
     const spenderFilter = r.spender ? parseAddress(r.spender, "spender") : undefined;
-    const lookback = parseBigInt(r.lookback, "lookback", 250_000n);
-    const chunk = parseBigInt(r.chunk, "chunk", 5_000n);
+    const lookback = r.lookback ? parseBigInt(r.lookback, "lookback", 0n) : blocksForDays(chainId, parseDays(r.lookbackDays));
+    const chunk = parseBigInt(r.chunk, "chunk", 10_000n);
     if (chunk === 0n) throw new CommandError("INVALID_INPUT", "chunk must be at least 1.", "Try --chunk 2000.");
 
     const client = this.ctx.publicClient(chainId);
@@ -178,10 +210,6 @@ export default class AllowancesAudit extends PluginCommand<AuditResult> {
       scanned: { fromBlock: fromBlock.toString(), toBlock: latest.toString(), approvalEvents: events, pairs: pairs.size },
       totals: { active: entries.filter((e) => e.allowance !== "0").length, unlimited },
       allowances: entries,
-      hint:
-        entries.length === 0
-          ? "No active allowances found in the scanned range. Widen --lookback to scan further back."
-          : "Revoke one with: mm allowances revoke --chain-id <id> --token <token> --spender <spender>",
     };
   }
 
@@ -212,7 +240,13 @@ export default class AllowancesAudit extends PluginCommand<AuditResult> {
 
   override successHint(data: AuditResult): string {
     const { active, unlimited } = data.totals;
-    if (active === 0) return `No active allowances for ${data.owner} on chain ${data.chainId} in the scanned range.`;
-    return `${active} active allowance${active === 1 ? "" : "s"} (${unlimited} unlimited) for ${data.owner} on chain ${data.chainId}.`;
+    const { pairs, fromBlock, toBlock } = data.scanned;
+    if (pairs === 0) {
+      return `No Approval events for ${data.owner} in blocks ${fromBlock}-${toBlock} on chain ${data.chainId}. Widen --lookback-days to scan further back.`;
+    }
+    if (active === 0) {
+      return `${pairs} token/spender pair${pairs === 1 ? "" : "s"} found, none still active (all revoked or spent). Use --all to list them.`;
+    }
+    return `${active} active allowance${active === 1 ? "" : "s"} (${unlimited} unlimited) for ${data.owner} on chain ${data.chainId}. Revoke with: mm allowances revoke --chain-id ${data.chainId} --token <token> --spender <spender>`;
   }
 }
