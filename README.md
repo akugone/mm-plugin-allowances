@@ -35,8 +35,6 @@ mm allowances revoke --chain-id 1 --token 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606
 mm allowances revoke --chain-id 1 --token 0xA0b8… --spender 0x0000…
 ```
 
-All inputs are flags; positional arguments are not supported on mm 6.2.0 plugin commands.
-
 `audit` output (JSON):
 
 ```json
@@ -74,9 +72,10 @@ MetaMask's Guard Mode policy and 2FA, so the agent cannot skip your confirmation
 ```bash
 npm install
 npm run build
-# A local (file:) install does not get the host's @metamask/agent-wallet injected, and the devDependency
-# copy in node_modules gives the command a *different* PluginCommand class ("Plugin command must extend
-# PluginCommand" in the consent hook). Point the plugin at the host's copy instead:
+# A local (file:) install is a symlink into this folder, so Node resolves imports from here and finds the
+# devDependency copy of @metamask/agent-wallet before the host's copy (which mm links into its data dir).
+# Two copies = two PluginCommand classes = "Plugin command must extend PluginCommand" in the consent hook.
+# Build with the devDependency copy (types), then point the plugin at the host's copy before installing:
 rm -rf node_modules/@metamask/agent-wallet
 ln -s "$(npm root -g)/@metamask/agent-wallet" node_modules/@metamask/agent-wallet
 mm config set experimentalPlugins true
@@ -86,9 +85,10 @@ mm allowances audit --help
 mm allowances revoke --token 0x… --spender 0x… --chain-id 1 --dry-run --json
 ```
 
-Installs from npm (`mm plugins install mm-plugin-allowances`) do not need the symlink step: the host links
-its own `@metamask/agent-wallet` into the plugin. All inputs are named flags on purpose: on mm 6.2.0,
-positionals after a plugin command are parsed as part of the command id.
+Installs from npm (`mm plugins install mm-plugin-allowances`) do not need the symlink step: the package is
+copied into mm's data dir, where the host's `@metamask/agent-wallet` is the one that resolves. All inputs
+are named flags on purpose: explicit `--token` / `--spender` are less error-prone for agents than
+positionals.
 
 ## License
 
