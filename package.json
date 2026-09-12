@@ -1,0 +1,35 @@
+{
+  "name": "mm-plugin-allowances",
+  "version": "0.1.0",
+  "description": "Audit and revoke ERC-20 token allowances from the MetaMask Agent Wallet CLI (mm)",
+  "license": "MIT",
+  "type": "module",
+  "keywords": ["oclif-plugin", "metamask", "agent-wallet", "erc20", "allowances", "approvals", "security"],
+  "repository": "github:akugone/mm-plugin-allowances",
+  "files": ["dist", "oclif.manifest.json"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json && oclif manifest",
+    "prepack": "npm run build",
+    "type-check": "tsc -p tsconfig.json --noEmit"
+  },
+  "oclif": {
+    "bin": "mm",
+    "commands": "./dist/commands",
+    "topicSeparator": " ",
+    "topics": {
+      "allowances": { "description": "Audit and revoke ERC-20 token allowances granted by your wallet" }
+    }
+  },
+  "mm": {
+    "schemaVersion": 1,
+    "minCliVersion": "^6.2.0",
+    "capabilities": [],
+    "commands": [
+      { "id": "allowances:audit", "capabilities": ["wallet-read"], "dataAccess": ["accounts"] },
+      { "id": "allowances:revoke", "capabilities": ["wallet-read", "wallet-submit"], "dataAccess": ["accounts"] }
+    ]
+  },
+  "peerDependencies": { "@metamask/agent-wallet": "^6.2.0" },
+  "dependencies": { "viem": "^2.21.0" },
+  "devDependencies": { "@metamask/agent-wallet": "^6.2.0", "oclif": "^4", "typescript": "^5" }
+}
