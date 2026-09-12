@@ -77,12 +77,15 @@ MetaMask's Guard Mode policy and 2FA, so the agent cannot skip your confirmation
   calls: on Arbitrum, 30 days is about a thousand requests. In `--json` mode progress is only shown with `--verbose`.
 - Only standard ERC-20 `Approval` events are considered (no Permit2 internal allowances, no ERC-721/1155
   `setApprovalForAll`). Those are natural follow-ups.
-- Spender labels are informational and may be incomplete.
+- Spender labels are informational and may be incomplete. Deterministic deployments (Permit2, Seaport, 1inch, 0x, ParaSwap) are labelled on every chain; others (Uniswap routers, Aave, MetaMask Swaps) only on the chains where that address is known.
+- `revoke` always acts on the wallet `mm` has selected (`mm wallet select`); `audit` can read any address with `--address`.
+- Token `symbol()` values are sanitised (control characters stripped, 24 chars max) so a hostile token cannot inject text into your terminal or an agent's context.
 
 ## Development
 
 ```bash
 npm install
+npm test
 npm run build
 # A local (file:) install is a symlink into this folder, so Node resolves imports from here and finds the
 # devDependency copy of @metamask/agent-wallet before the host's copy (which mm links into its data dir).

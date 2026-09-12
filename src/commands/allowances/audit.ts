@@ -10,15 +10,17 @@ import {
 import type { Address } from "viem";
 import {
   approvalEvent,
+  clampDecimals,
   erc20Abi,
   formatAllowance,
   isUnlimited,
   parseAddress,
   parseBigInt,
-  parseChainId,
   resolveOwner,
+  sanitizeSymbol,
   spenderLabel,
 } from "../../lib/erc20.js";
+import { blocksForDays, parseChainIds, parseDays } from "../../lib/inputs.js";
 
 const inputs = {
   chainIds: {
@@ -87,40 +89,6 @@ const inputs = {
   },
 } satisfies InputSchema;
 
-/** Approximate seconds per block, used to turn --lookback-days into a block window. Unknown chains assume 12 s. */
-const BLOCK_SECONDS: Record<number, number> = {
-  1: 12, 11155111: 12,            // Ethereum, Sepolia
-  8453: 2, 84532: 2,              // Base, Base Sepolia
-  10: 2, 59144: 2, 43114: 2,      // Optimism, Linea, Avalanche
-  137: 2, 80002: 2,               // Polygon, Amoy
-  56: 1.5,                        // BNB Chain
-  42161: 0.25, 421614: 0.25,      // Arbitrum One, Arbitrum Sepolia
-  324: 1,                         // zkSync Era
-};
-
-export function blocksForDays(chainId: number, days: number): bigint {
-  const perBlock = BLOCK_SECONDS[chainId] ?? 12;
-  return BigInt(Math.ceil((days * 86_400) / perBlock));
-}
-
-function parseDays(raw: string | undefined): number {
-  const value = (raw ?? "").trim();
-  if (!value) return 30;
-  const days = Number(value);
-  if (!Number.isFinite(days) || days <= 0 || days > 3650) {
-    throw new CommandError("INVALID_INPUT", "lookback-days must be a positive number of days (max 3650).", `Got '${value}'.`);
-  }
-  return days;
-}
-
-function parseChainIds(list: string | undefined, single: string | undefined): number[] {
-  const raw = [...(list ?? "").split(","), single ?? ""].map((s) => s.trim()).filter(Boolean);
-  if (raw.length === 0) {
-    throw new CommandError("MISSING_CHAIN_ID", "Give at least one chain id.", "Use --chain-ids 1,8453 or --chain-id 1. Run `mm chains list` to see options.");
-  }
-  return [...new Set(raw.map(parseChainId))];
-}
-
 export type AllowanceEntry = {
   chainId: number;
   token: Address;
@@ -137,7 +105,7 @@ export type AllowanceEntry = {
 
 export type ChainScan = {
   chainId: number;
-  scanned?: { fromBlock: string; toBlock: string; approvalEvents: number; pairs: number };
+  scanned?: { fromBlock: string; toBlock: string; approvalEvents: number; pairs: number; skippedNonErc20: number };
   totals?: { active: number; unlimited: number };
   error?: { code: string; message: string; hint?: string };
 };
@@ -266,6 +234,7 @@ export default class AllowancesAudit extends PluginCommand<AuditResult> {
 
     // 2. Live allowance for each pair (events can be stale: spent, reset, or re-approved).
     const entries: AllowanceEntry[] = [];
+    let skipped = 0;
     const candidates = [...pairs.values()].filter((p) => !opts.spender || p.spender.toLowerCase() === opts.spender.toLowerCase());
     const batchSize = 6;
     for (let i = 0; i < candidates.length; i += batchSize) {
@@ -273,7 +242,10 @@ export default class AllowancesAudit extends PluginCommand<AuditResult> {
       const batch = candidates.slice(i, i + batchSize);
       const results = await Promise.all(batch.map((p) => this.readEntry(client, chainId, owner, p)));
       for (const entry of results) {
-        if (!entry) continue;
+        if (!entry) {
+          skipped += 1;
+          continue;
+        }
         if (entry.allowance === "0" && !opts.includeZero) continue;
         entries.push(entry);
       }
@@ -282,7 +254,7 @@ export default class AllowancesAudit extends PluginCommand<AuditResult> {
     return {
       scan: {
         chainId,
-        scanned: { fromBlock: fromBlock.toString(), toBlock: latest.toString(), approvalEvents: events, pairs: pairs.size },
+        scanned: { fromBlock: fromBlock.toString(), toBlock: latest.toString(), approvalEvents: events, pairs: pairs.size, skippedNonErc20: skipped },
         totals: { active: entries.filter((e) => e.allowance !== "0").length, unlimited: entries.filter((e) => e.unlimited).length },
       },
       entries,
@@ -297,8 +269,8 @@ export default class AllowancesAudit extends PluginCommand<AuditResult> {
       return null; // not a conforming ERC-20 (or self-destructed): skip silently
     }
     const [symbol, decimals] = await Promise.all([
-      client.readContract({ address: p.token, abi: erc20Abi, functionName: "symbol" }).then(String).catch(() => "?"),
-      client.readContract({ address: p.token, abi: erc20Abi, functionName: "decimals" }).then(Number).catch(() => 18),
+      client.readContract({ address: p.token, abi: erc20Abi, functionName: "symbol" }).then(sanitizeSymbol).catch(() => "?"),
+      client.readContract({ address: p.token, abi: erc20Abi, functionName: "decimals" }).then(clampDecimals).catch(() => 18),
     ]);
     return {
       chainId,
@@ -306,7 +278,7 @@ export default class AllowancesAudit extends PluginCommand<AuditResult> {
       symbol,
       decimals,
       spender: p.spender,
-      spenderLabel: spenderLabel(p.spender),
+      spenderLabel: spenderLabel(p.spender, chainId),
       allowance: allowance.toString(),
       allowanceFormatted: formatAllowance(allowance, decimals),
       unlimited: isUnlimited(allowance),

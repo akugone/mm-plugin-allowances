@@ -7,8 +7,9 @@ import {
   schemaToArgs,
   schemaToFlags,
 } from "@metamask/agent-wallet/plugin";
-import { type Address, encodeFunctionData, parseGwei } from "viem";
-import { erc20Abi, formatAllowance, parseAddress, parseChainId, resolveOwner, spenderLabel } from "../../lib/erc20.js";
+import { type Address, encodeFunctionData } from "viem";
+import { clampDecimals, erc20Abi, formatAllowance, parseAddress, parseChainId, resolveOwner, sanitizeSymbol, spenderLabel } from "../../lib/erc20.js";
+import { parseGweiFlag } from "../../lib/inputs.js";
 
 const inputs = {
   token: {
@@ -68,17 +69,6 @@ const inputs = {
   },
 } satisfies InputSchema;
 
-const GWEI_RE = /^\d+(\.\d{1,9})?$/;
-
-function parseGweiFlag(raw: string | undefined, what: string): bigint | undefined {
-  const value = (raw ?? "").trim();
-  if (!value) return undefined;
-  if (!GWEI_RE.test(value) || Number(value) <= 0) {
-    throw new CommandError("INVALID_INPUT", `${what} must be a positive number of gwei, e.g. 5 or 1.5.`, `Got '${value}'.`);
-  }
-  return parseGwei(value);
-}
-
 export type RevokeResult = {
   chainId: number;
   owner: Address;
@@ -132,12 +122,12 @@ export default class AllowancesRevoke extends PluginCommand<RevokeResult> {
         .catch(() => {
           throw new CommandError("ALLOWANCES_NOT_ERC20", `${token} does not answer allowance(); is it an ERC-20 on chain ${chainId}?`, "Check the token address and chain id.");
         }),
-      client.readContract({ address: token, abi: erc20Abi, functionName: "symbol" }).then(String).catch(() => "?"),
-      client.readContract({ address: token, abi: erc20Abi, functionName: "decimals" }).then(Number).catch(() => 18),
+      client.readContract({ address: token, abi: erc20Abi, functionName: "symbol" }).then(sanitizeSymbol).catch(() => "?"),
+      client.readContract({ address: token, abi: erc20Abi, functionName: "decimals" }).then(clampDecimals).catch(() => 18),
     ]);
 
     const calldata = encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [spender, 0n] });
-    const label = spenderLabel(spender);
+    const label = spenderLabel(spender, chainId);
     const gasSpeed = (r.gasSpeed || undefined) as RevokeResult["gasSpeed"];
     const maxFeePerGas = parseGweiFlag(r.maxFeeGwei, "max-fee-gwei");
     const maxPriorityFeePerGas = parseGweiFlag(r.priorityFeeGwei, "priority-fee-gwei");
