@@ -5,7 +5,7 @@ A [MetaMask Agent Wallet](https://docs.metamask.io/agent-wallet/) plugin that ad
 
 | Command | Capability | What it does |
 |---|---|---|
-| `mm allowances audit --chain-id <id>` | `wallet-read` | Scans `Approval` events for your wallet, then reads every live `allowance()` on-chain. Lists active approvals, flags unlimited ones, labels well-known spenders (Permit2, Uniswap, 1inch, 0x, Seaport, Aave, MetaMask Swaps…). |
+| `mm allowances audit --chain-ids <id,id,…>` | `wallet-read` | Scans `Approval` events for your wallet, then reads every live `allowance()` on-chain. Lists active approvals, flags unlimited ones, labels well-known spenders (Permit2, Uniswap, 1inch, 0x, Seaport, Aave, MetaMask Swaps…). |
 | `mm allowances revoke --chain-id <id> --token <addr> --spender <addr>` | `wallet-read`, `wallet-submit` | Sends `approve(spender, 0)` through the MetaMask wallet executor, so the revocation gets the same policy checks, Blockaid scan and 2FA as any transaction. `--dry-run` shows the calldata without sending. |
 
 Why: unlimited token approvals left behind by DEXes and dapps are the most common way wallets get drained
@@ -28,6 +28,7 @@ You will see a consent screen listing the two commands and their capabilities.
 
 ```bash
 mm allowances audit --chain-id 1
+mm allowances audit --chain-ids 1,8453,42161 --json          # several chains in one call
 mm allowances audit --chain-id 8453 --lookback-days 90 --json
 mm allowances audit --chain-id 1 --spender 0x000000000022D473030F116dDEE9F6B43aC78BA3   # only Permit2
 
@@ -46,11 +47,14 @@ Sepolia, where the base fee moves faster than the estimate).
 ```json
 {
   "owner": "0x…",
-  "chainId": 1,
-  "scanned": { "fromBlock": "…", "toBlock": "…", "approvalEvents": 42, "pairs": 17 },
-  "totals": { "active": 5, "unlimited": 3 },
+  "chainIds": [1, 8453],
+  "chains": [
+    { "chainId": 1, "scanned": { "fromBlock": "…", "toBlock": "…", "approvalEvents": 42, "pairs": 17 }, "totals": { "active": 4, "unlimited": 3 } },
+    { "chainId": 8453, "scanned": { "…": "…" }, "totals": { "active": 1, "unlimited": 0 } }
+  ],
+  "totals": { "active": 5, "unlimited": 3, "chainsScanned": 2, "chainsFailed": 0 },
   "allowances": [
-    { "token": "0x…", "symbol": "USDC", "decimals": 6, "spender": "0x…", "spenderLabel": "Uniswap Permit2",
+    { "chainId": 1, "token": "0x…", "symbol": "USDC", "decimals": 6, "spender": "0x…", "spenderLabel": "Uniswap Permit2",
       "allowance": "1157920892373161954235709850086879078532699846656405640394575840079131296399…",
       "allowanceFormatted": "unlimited", "unlimited": true, "lastApprovalBlock": "…", "lastApprovalTx": "0x…" }
   ]
@@ -65,6 +69,7 @@ MetaMask's Guard Mode policy and 2FA, so the agent cannot skip your confirmation
 
 ## Notes and limits
 
+- Several chains: `--chain-ids 1,8453,42161` scans them one after the other; a chain that fails (unsupported, RPC error) is reported in `chains[].error` while the others still return. `--from-block` is single-chain only.
 - The scan is event-based and windowed: by default it covers the last **30 days**, converted into blocks with the
   chain's block time (≈ 216 000 blocks on Ethereum, ≈ 1.3 M on Base, ≈ 10 M on Arbitrum). Widen with
   `--lookback-days`, pin an exact window with `--lookback <blocks>` or `--from-block`. Each `eth_getLogs` call covers
