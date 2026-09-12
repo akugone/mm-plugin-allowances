@@ -15,14 +15,21 @@ pipeline.
 
 ## Install
 
-Plugins are a beta feature of the `mm` CLI (≥ 6.2.0):
+Plugins are a beta feature of the `mm` CLI (≥ 6.2.0). Until the package is on npm, install from source:
 
 ```bash
+git clone https://github.com/akugone/mm-plugin-allowances && cd mm-plugin-allowances
+npm install && npm run build
+rm -rf node_modules/@metamask/agent-wallet
+ln -s "$(npm root -g)/@metamask/agent-wallet" node_modules/@metamask/agent-wallet
 mm config set experimentalPlugins true
-mm plugins install mm-plugin-allowances
+mm config set experimentalAllowUnverifiedInstalls true
+mm plugins install "file:$PWD" --accept-permissions
 ```
 
-You will see a consent screen listing the two commands and their capabilities.
+Once published, it will be `mm plugins install mm-plugin-allowances` and a consent screen listing the two
+commands and their capabilities. Verified end to end on Sepolia with a MetaMask server wallet in Guard
+Mode (email 2FA).
 
 ## Usage
 
@@ -49,7 +56,7 @@ Sepolia, where the base fee moves faster than the estimate).
   "owner": "0x…",
   "chainIds": [1, 8453],
   "chains": [
-    { "chainId": 1, "scanned": { "fromBlock": "…", "toBlock": "…", "approvalEvents": 42, "pairs": 17 }, "totals": { "active": 4, "unlimited": 3 } },
+    { "chainId": 1, "scanned": { "fromBlock": "…", "toBlock": "…", "approvalEvents": 42, "pairs": 17, "skippedNonErc20": 0 }, "totals": { "active": 4, "unlimited": 3 } },
     { "chainId": 8453, "scanned": { "…": "…" }, "totals": { "active": 1, "unlimited": 0 } }
   ],
   "totals": { "active": 5, "unlimited": 3, "chainsScanned": 2, "chainsFailed": 0 },
@@ -100,8 +107,9 @@ mm allowances audit --help
 mm allowances revoke --token 0x… --spender 0x… --chain-id 1 --dry-run --json
 ```
 
-Installs from npm (`mm plugins install mm-plugin-allowances`) do not need the symlink step: the package is
-copied into mm's data dir, where the host's `@metamask/agent-wallet` is the one that resolves. All inputs
+Installs from npm should not need the symlink step: according to MetaMask's plugin reference the package is
+copied into mm's data dir and the host links its own `@metamask/agent-wallet` next to it (not verified yet,
+the package is not published). All inputs
 are named flags on purpose: explicit `--token` / `--spender` are less error-prone for agents than
 positionals.
 
