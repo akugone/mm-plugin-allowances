@@ -86,7 +86,7 @@ export default class AllowancesRevoke extends PluginCommand<RevokeResult> {
     const [previous, symbol, decimals] = await Promise.all([
       client
         .readContract({ address: token, abi: erc20Abi, functionName: "allowance", args: [owner, spender] })
-        .then((v) => v as bigint)
+        .then((v: unknown) => v as bigint)
         .catch(() => {
           throw new CommandError("ALLOWANCES_NOT_ERC20", `${token} does not answer allowance(); is it an ERC-20 on chain ${chainId}?`, "Check the token address and chain id.");
         }),
