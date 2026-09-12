@@ -7,7 +7,7 @@ import {
   schemaToArgs,
   schemaToFlags,
 } from "@metamask/agent-wallet/plugin";
-import { type Address, encodeFunctionData } from "viem";
+import { type Address, encodeFunctionData, parseGwei } from "viem";
 import { erc20Abi, formatAllowance, parseAddress, parseChainId, resolveOwner, spenderLabel } from "../../lib/erc20.js";
 
 const inputs = {
@@ -40,7 +40,44 @@ const inputs = {
     prompt: false,
     default: false,
   },
+  gasSpeed: {
+    type: InputFieldType.Select,
+    flag: "gas-speed",
+    message: "Gas fee tier for EIP-1559 chains (default medium)",
+    required: false,
+    prompt: false,
+    options: [
+      { value: "low", label: "low" },
+      { value: "medium", label: "medium" },
+      { value: "high", label: "high" },
+    ],
+  },
+  maxFeeGwei: {
+    type: InputFieldType.Text,
+    flag: "max-fee-gwei",
+    message: "Explicit maxFeePerGas in gwei (overrides the estimator, e.g. 5)",
+    required: false,
+    prompt: false,
+  },
+  priorityFeeGwei: {
+    type: InputFieldType.Text,
+    flag: "priority-fee-gwei",
+    message: "Explicit maxPriorityFeePerGas in gwei (e.g. 1.5)",
+    required: false,
+    prompt: false,
+  },
 } satisfies InputSchema;
+
+const GWEI_RE = /^\d+(\.\d{1,9})?$/;
+
+function parseGweiFlag(raw: string | undefined, what: string): bigint | undefined {
+  const value = (raw ?? "").trim();
+  if (!value) return undefined;
+  if (!GWEI_RE.test(value) || Number(value) <= 0) {
+    throw new CommandError("INVALID_INPUT", `${what} must be a positive number of gwei, e.g. 5 or 1.5.`, `Got '${value}'.`);
+  }
+  return parseGwei(value);
+}
 
 export type RevokeResult = {
   chainId: number;
@@ -53,6 +90,9 @@ export type RevokeResult = {
   previousAllowanceFormatted: string;
   calldata: `0x${string}`;
   dryRun: boolean;
+  gasSpeed?: "low" | "medium" | "high";
+  maxFeePerGasWei?: string;
+  maxPriorityFeePerGasWei?: string;
   status?: string;
   hash?: string;
   pollingId?: string;
@@ -66,6 +106,8 @@ export default class AllowancesRevoke extends PluginCommand<RevokeResult> {
   static override examples = [
     "<%= config.bin %> allowances revoke --chain-id 1 --token 0xA0b8...eB48 --spender 0x0000...78BA3",
     "<%= config.bin %> allowances revoke --chain-id 1 --token 0xA0b8...eB48 --spender 0x0000...78BA3 --dry-run --json",
+    "<%= config.bin %> allowances revoke --chain-id 11155111 --token 0x1c7D...7238 --spender 0x0000...78BA3 --gas-speed high",
+    "<%= config.bin %> allowances revoke --chain-id 11155111 --token 0x1c7D...7238 --spender 0x0000...78BA3 --max-fee-gwei 5 --priority-fee-gwei 1.5",
   ];
 
   static override requiresAuth = true;
@@ -96,6 +138,12 @@ export default class AllowancesRevoke extends PluginCommand<RevokeResult> {
 
     const calldata = encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [spender, 0n] });
     const label = spenderLabel(spender);
+    const gasSpeed = (r.gasSpeed || undefined) as RevokeResult["gasSpeed"];
+    const maxFeePerGas = parseGweiFlag(r.maxFeeGwei, "max-fee-gwei");
+    const maxPriorityFeePerGas = parseGweiFlag(r.priorityFeeGwei, "priority-fee-gwei");
+    if (maxPriorityFeePerGas !== undefined && maxFeePerGas !== undefined && maxPriorityFeePerGas > maxFeePerGas) {
+      throw new CommandError("INVALID_INPUT", "priority-fee-gwei cannot exceed max-fee-gwei.", "Lower the priority fee or raise the max fee.");
+    }
     const base: RevokeResult = {
       chainId,
       owner,
@@ -107,6 +155,9 @@ export default class AllowancesRevoke extends PluginCommand<RevokeResult> {
       previousAllowanceFormatted: formatAllowance(previous, decimals),
       calldata,
       dryRun: Boolean(r.dryRun),
+      gasSpeed,
+      maxFeePerGasWei: maxFeePerGas?.toString(),
+      maxPriorityFeePerGasWei: maxPriorityFeePerGas?.toString(),
     };
 
     if (previous === 0n) {
@@ -118,7 +169,14 @@ export default class AllowancesRevoke extends PluginCommand<RevokeResult> {
     const result = await executor({
       kind: "transaction",
       chainId,
-      transaction: { to: token, data: calldata, value: 0n },
+      transaction: {
+        to: token,
+        data: calldata,
+        value: 0n,
+        ...(maxFeePerGas !== undefined ? { maxFeePerGas } : {}),
+        ...(maxPriorityFeePerGas !== undefined ? { maxPriorityFeePerGas } : {}),
+        ...(gasSpeed ? { options: { speed: gasSpeed } } : {}),
+      },
       intent: {
         summary: `Revoke ${symbol} allowance (${base.previousAllowanceFormatted}) granted to ${label ?? spender}`,
         action: "custom",

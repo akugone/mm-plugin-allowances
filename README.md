@@ -33,7 +33,13 @@ mm allowances audit --chain-id 1 --spender 0x000000000022D473030F116dDEE9F6B43aC
 
 mm allowances revoke --chain-id 1 --token 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48 --spender 0x000000000022D473030F116dDEE9F6B43aC78BA3 --dry-run
 mm allowances revoke --chain-id 1 --token 0xA0b8… --spender 0x0000…
+mm allowances revoke --chain-id 11155111 --token 0x1c7D… --spender 0x0000… --gas-speed high
+mm allowances revoke --chain-id 11155111 --token 0x1c7D… --spender 0x0000… --max-fee-gwei 5 --priority-fee-gwei 1.5
 ```
+
+Gas: `--gas-speed low|medium|high` picks the estimator tier; `--max-fee-gwei` / `--priority-fee-gwei` set
+EIP-1559 fees explicitly, which is the fix when the server wallet answers `rpc_fee_too_low` (seen on
+Sepolia, where the base fee moves faster than the estimate).
 
 `audit` output (JSON):
 
