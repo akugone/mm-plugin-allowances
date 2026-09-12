@@ -17,7 +17,6 @@ const inputs = {
     message: "ERC-20 token contract address",
     required: true,
     prompt: true,
-    index: 0,
   },
   spender: {
     type: InputFieldType.Text,
@@ -25,7 +24,6 @@ const inputs = {
     message: "Spender address whose allowance should be set to zero",
     required: true,
     prompt: true,
-    index: 1,
   },
   chainId: {
     type: InputFieldType.Text,
@@ -67,7 +65,7 @@ export default class AllowancesRevoke extends PluginCommand<RevokeResult> {
 
   static override examples = [
     "<%= config.bin %> allowances revoke --chain-id 1 --token 0xA0b8...eB48 --spender 0x0000...78BA3",
-    "<%= config.bin %> allowances revoke 0xA0b8...eB48 0x0000...78BA3 --chain-id 1 --dry-run --json",
+    "<%= config.bin %> allowances revoke --chain-id 1 --token 0xA0b8...eB48 --spender 0x0000...78BA3 --dry-run --json",
   ];
 
   static override requiresAuth = true;
