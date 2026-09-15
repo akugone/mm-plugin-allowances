@@ -1,7 +1,7 @@
 {
   "name": "mm-plugin-allowances",
-  "version": "0.2.1",
-  "description": "Audit and revoke ERC-20 token allowances from the MetaMask Agent Wallet CLI (mm)",
+  "version": "0.3.0",
+  "description": "Audit and revoke ERC-20 and Permit2 token allowances from the MetaMask Agent Wallet CLI (mm)",
   "license": "MIT",
   "type": "module",
   "keywords": [
@@ -11,6 +11,7 @@
     "erc20",
     "allowances",
     "approvals",
+    "permit2",
     "security"
   ],
   "repository": "github:akugone/mm-plugin-allowances",

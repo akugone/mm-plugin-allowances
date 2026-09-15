@@ -58,9 +58,28 @@ export function sanitizeSymbol(raw: unknown): string {
   return cleaned.length > MAX_SYMBOL_LENGTH ? `${cleaned.slice(0, MAX_SYMBOL_LENGTH - 1)}…` : cleaned;
 }
 
+/** Uniswap Permit2, deterministic deployment (same address on every chain). */
+export const PERMIT2_ADDRESS: Address = "0x000000000022D473030F116dDEE9F6B43aC78BA3";
+
+/**
+ * Spenders that are designed to hold one unlimited ERC-20 approval per token and gate the actual spending
+ * elsewhere (Permit2: per-app allowances with amount, expiration and nonce, granted by signature).
+ * An unlimited approval to one of these is the expected state, not a finding; revoking it breaks every app
+ * routed through it. Lower-cased keys, value is the note shown next to the entry.
+ */
+export const EXPECTED_UNLIMITED_SPENDERS: Record<string, string> = {
+  [PERMIT2_ADDRESS.toLowerCase()]:
+    "Canonical Permit2: unlimited by design. Apps spend through Permit2 allowances (see permit2[]), revoke those instead.",
+};
+
+/** Note explaining why an unlimited approval to this spender is expected, or undefined for ordinary spenders. */
+export function expectedUnlimitedNote(spender: string): string | undefined {
+  return EXPECTED_UNLIMITED_SPENDERS[spender.toLowerCase()];
+}
+
 /** Contracts deployed at the same address on every chain (deterministic deployments). Lower-cased keys. */
 export const SPENDER_LABELS: Record<string, string> = {
-  "0x000000000022d473030f116ddee9f6b43ac78ba3": "Uniswap Permit2",
+  [PERMIT2_ADDRESS.toLowerCase()]: "Uniswap Permit2",
   "0x0000000000000068f116a894984e2db1123eb395": "OpenSea Seaport 1.6",
   "0x1111111254eeb25477b68fb85ed929f73a960582": "1inch Aggregation Router v5",
   "0x111111125421ca6dc452d289314280a0f8842a65": "1inch Aggregation Router v6",
@@ -77,7 +96,9 @@ const UNISWAP_V3_ROUTERS: Record<string, string> = {
 export const CHAIN_SPENDER_LABELS: Record<number, Record<string, string>> = {
   1: {
     ...UNISWAP_V3_ROUTERS,
+    "0x7a250d5630b4cf539739df2c5dacb4c659f2488d": "Uniswap V2 Router02",
     "0x3fc91a3afd70395cd496c647d5a6cc9d4b2b7fad": "Uniswap Universal Router",
+    "0x66a9893cc07d91d95644aedd05d03f95e1dba8af": "Uniswap Universal Router v2",
     "0x87870bca3f3fd6335c3f4ce8392d69350b4fa4e2": "Aave V3 Pool",
     "0x881d40237659c251811cec9c364ef91dc08d300c": "MetaMask Swaps Router",
   },
